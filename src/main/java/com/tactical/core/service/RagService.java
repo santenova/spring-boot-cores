@@ -22,6 +22,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class RagService {
 
+    /** A source needs more tags than this: a thinly tagged hit was matched on too little. */
+    private static final int MIN_TAGS = 3;
+
     private record Resolved(String text, String from) {
     }
 
@@ -47,14 +50,27 @@ public class RagService {
         if (request.hits() == null || request.hits().isEmpty()) {
             throw new ApiException(400, "At least one search hit is required");
         }
+        // Only a document carrying more than three tags is trusted as a source: with fewer it
+        // was matched on too little to synthesise from, and would only dilute the answer
+        List<SearchHit> eligible = new ArrayList<>();
+        for (SearchHit hit : request.hits()) {
+            if (hit.tags() != null && hit.tags().size() > MIN_TAGS) {
+                eligible.add(hit);
+            }
+        }
+        if (eligible.isEmpty()) {
+            throw new ApiException(409, "No hit carries more than " + MIN_TAGS
+                    + " tags - nothing to synthesise");
+        }
+        int skipped = request.hits().size() - eligible.size();
         int limit = request.limit() == null
                 ? props.rag().sourceLimit()
                 : Math.min(request.limit(), 50);
         List<String> sourceIndices = index.sourceIndices();
         List<RagSource> sources = new ArrayList<>();
         int full = 0;
-        for (int i = 0; i < Math.min(limit, request.hits().size()); i++) {
-            SearchHit hit = request.hits().get(i);
+        for (int i = 0; i < Math.min(limit, eligible.size()); i++) {
+            SearchHit hit = eligible.get(i);
             Resolved resolved = resolve(hit, sourceIndices);
             if ("original".equals(resolved.from())) {
                 full++;
@@ -76,7 +92,9 @@ public class RagService {
                 props.ollama().chatModel(), false);
         String note = "SYNTHESIS CONTEXT: " + full + " OF " + sources.size()
                 + " SOURCES READ AS FULL ORIGINAL DOCUMENTS"
-                + (full < sources.size() ? " - THE REST HAVE ONLY THEIR SNIPPET" : "");
+                + (full < sources.size() ? " - THE REST HAVE ONLY THEIR SNIPPET" : "")
+                + (skipped > 0 ? " | " + skipped + " HIT" + (skipped == 1 ? "" : "S")
+                        + " SKIPPED: FEWER THAN " + (MIN_TAGS + 1) + " TAGS" : "");
         return new RagResult(answer, sources, note);
     }
 
@@ -151,7 +169,7 @@ public class RagService {
         }
         if (node.isTextual()) {
             String text = node.asText().trim();
-            if (text.length() > 30) {
+            if (text.length() > 30 && !looksLikePath(text)) {
                 out.add(text);
             }
             return;
@@ -162,5 +180,26 @@ public class RagService {
                 collectStrings(children.next(), out, depth + 1);
             }
         }
+    }
+
+    /**
+     * A stored field that is really a file path or a URI rather than prose. A crawler-fed
+     * document often carries its local path in one field, and that path is frequently the
+     * longest string in the record: read as the body it tells the model nothing and displaces
+     * the snippet that does, so it is skipped and the snippet stands in.
+     */
+    private static boolean looksLikePath(String text) {
+        String value = text.trim();
+        if (value.contains("://")) {
+            return true;
+        }
+        String last = value.substring(value.lastIndexOf('/') + 1);
+        int dot = last.lastIndexOf('.');
+        if (value.indexOf('/') >= 0 && dot > 0 && last.length() - dot <= 6 && last.indexOf(' ') < 0) {
+            return true;
+        }
+        boolean rootLike = value.startsWith("/") || value.startsWith("~/")
+                || (value.length() > 1 && value.charAt(1) == ':');
+        return rootLike && value.indexOf(' ') < 0 && value.length() > 20;
     }
 }
