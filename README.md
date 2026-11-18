@@ -250,3 +250,10 @@ from an unknown id before sending a chat.
 == Result ==
   21 passed, 0 failed
 ```
+
+## Works for me :)
+```
+killall -9 java; mvn -q clean package;   mvn spring-boot:run & sleep 2 ;  bash scripts/verify.sh &  bash scripts/test.sh &
+
+
+```

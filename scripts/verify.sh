@@ -4,7 +4,7 @@
 #
 #   scripts/verify.sh                                  # http://localhost:8080, core "verify"
 #   scripts/verify.sh http://host:8080 mycore
-#   VERIFY_QUERY="ransomware" scripts/verify.sh
+#   VERIFY_QUERY="ocean" scripts/verify.sh
 #
 # Every pipeline prints PASS or FAIL with its HTTP status, and a failure echoes the cluster's
 # own error message underneath. The exit code is the number of failed pipelines.
@@ -12,7 +12,7 @@ set -u
 
 BASE="${1:-http://localhost:8080}"
 CORE="${2:-verify}"
-QUERY="${VERIFY_QUERY:-malware analysis}"
+QUERY="${VERIFY_QUERY:-ocean}"
 CORE_INDEX="knowledge_core_$CORE"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
