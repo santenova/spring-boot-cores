@@ -2,7 +2,8 @@
 
 Spring Boot port of the Tactical knowledge core: ingest documents out of Elasticsearch into
 vector knowledge cores, search them with BM25, kNN or hybrid RRF, and synthesise cited
-answers through an OpenAI-compatible Ollama endpoint.
+answers through an OpenAI-compatible Ollama endpoint. Chat takes an optional persona,
+imported from a JSON file, so one body switches the voice of the answer.
 
 Two local services are all it needs: Ollama (OpenAI-compatible API on port 11434) and
 Elasticsearch (REST on port 9200). No cloud account, no vendor SDK.
@@ -55,6 +56,9 @@ src/main/resources/application.yml:
     ES_USERNAME          (blank)
     ES_PASSWORD          (blank)
     ES_INDEX_PREFIX      knowledge_core_
+    PERSONA_SAMPLE_FILE  classpath:sample-data/personas.json
+    PERSONA_AUTO_IMPORT  true
+    PERSONA_DEFAULT      (blank)
     SERVER_PORT          8080
 
 More clusters: append entries under tactical.elastic.endpoints and pick one with ES_ACTIVE.
@@ -73,25 +77,34 @@ The same pipelines by hand, in the order they should pass:
     curl -s http://localhost:8080/api/health
     curl -s http://localhost:8080/api/models
 
-    # 2  a complete answer, then a streamed one
+    # 2  personas: import the shipped sample, then read the registry
+    curl -s -X POST http://localhost:8080/api/personas/import -H "Content-Type: application/json" \
+      -d '{"path":"classpath:sample-data/personas.json"}'
+    curl -s http://localhost:8080/api/personas
+
+    # 3  a complete answer, then a streamed one - with and without a persona
     curl -s -X POST http://localhost:8080/api/chat -H "Content-Type: application/json" \
       -d '{"prompt":"Reply with the single word: ready"}'
+    curl -s -X POST http://localhost:8080/api/chat -H "Content-Type: application/json" \
+      -d '{"prompt":"Reply with the single word: ready","persona":"sentinel"}'
     curl -sN -X POST http://localhost:8080/api/chat/stream -H "Content-Type: application/json" \
       -d '{"prompt":"Say hello in one short sentence."}'
+    curl -sN -X POST http://localhost:8080/api/chat/stream -H "Content-Type: application/json" \
+      -d '{"prompt":"Say hello in one short sentence.","persona":"oracle"}'
 
-    # 3  no cores yet on a fresh install
+    # 4  no cores yet on a fresh install
     curl -s http://localhost:8080/api/cores
 
-    # 4  ingest a core: expand, wide net, tag, embed, bulk index
+    # 5  ingest a core: expand, wide net, tag, embed, bulk index
     curl -s -X POST http://localhost:8080/api/ingest -H "Content-Type: application/json" \
       -d '{"queries":["malware analysis"],"coreName":"verify","embed":true}'
 
-    # 5  the core exists, and its vector field is readable
+    # 6  the core exists, and its vector field is readable
     curl -s http://localhost:8080/api/cores/verify/mapping
     #    repair a core whose mapping predates embeddings
     curl -s -X POST http://localhost:8080/api/cores/verify/mapping
 
-    # 6  BM25, kNN and hybrid - one body, three modes
+    # 7  BM25, kNN and hybrid - one body, three modes
     curl -s -X POST http://localhost:8080/api/search -H "Content-Type: application/json" \
       -d '{"query":"ransomware behaviour","mode":"text","k":5}'
     curl -s -X POST http://localhost:8080/api/search -H "Content-Type: application/json" \
@@ -99,17 +112,17 @@ The same pipelines by hand, in the order they should pass:
     curl -s -X POST http://localhost:8080/api/search -H "Content-Type: application/json" \
       -d '{"query":"ransomware behaviour","mode":"hybrid","k":5}'
 
-    # 7  tag scoped kNN, then the tag counts behind the navigation
+    # 8  tag scoped kNN, then the tag counts behind the navigation
     curl -s -X POST http://localhost:8080/api/search -H "Content-Type: application/json" \
       -d '{"tags":["malware analysis"],"cores":["knowledge_core_verify"]}'
     curl -s -X POST http://localhost:8080/api/search/tags -H "Content-Type: application/json" \
       -d '{"cores":["knowledge_core_verify"]}'
 
-    # 8  RAG - paste the hits array of the hybrid response into the body
+    # 9  RAG - paste the hits array of the hybrid response into the body
     curl -s -X POST http://localhost:8080/api/rag/synthesize -H "Content-Type: application/json" \
       -d '{"query":"ransomware behaviour","hits":[]}'
 
-    # 9  drop the test core
+    # 10 drop the test core
     curl -s -X DELETE http://localhost:8080/api/cores/knowledge_core_verify
 
 Modes are text (BM25), knn (dense vectors) and hybrid (both, fused with RRF); a search body
@@ -120,6 +133,11 @@ either a delta or a final done event carrying the token count.
 
     GET    /api/health
     GET    /api/models
+    GET    /api/personas
+    GET    /api/personas/{id}
+    POST   /api/personas
+    POST   /api/personas/import
+    DELETE /api/personas/{id}
     POST   /api/chat
     POST   /api/chat/stream
     POST   /api/search
@@ -131,8 +149,50 @@ either a delta or a final done event carrying the token count.
     POST   /api/ingest
     POST   /api/rag/synthesize
 
+## Personas
+
+A persona is a named directive that leads the message list of a chat turn: who it is, what it
+was told to do, how it should sound and what it knows most about. The project ships sample data
+in sample-data/personas.json, and the pom declares that directory as a resource, so the file
+ends up inside the jar as classpath:sample-data/personas.json.
+
+The sample is imported at startup (PERSONA_AUTO_IMPORT, on by default), which is why the first
+chat body can already name a persona. Point PERSONA_SAMPLE_FILE at your own export to load that
+instead, or turn auto-import off and drive the registry through the endpoints. The registry is
+in memory, so the startup import is what fills it after every restart:
+
+    # create personas from the shipped sample file
+    curl -s -X POST http://localhost:8080/api/personas/import -H "Content-Type: application/json" \
+      -d '{"path":"classpath:sample-data/personas.json"}'
+
+    # any path works the same way, and a prompt-hub export (Elasticsearch hits, each persona
+    # under _source) imports unchanged:  -d '{"path":"/home/me/personas.json"}'
+    curl -s http://localhost:8080/api/personas
+    curl -s http://localhost:8080/api/personas/sentinel
+
+    # chat as one of them: the id, or the display name, goes in the body
+    curl -s -X POST http://localhost:8080/api/chat -H "Content-Type: application/json" \
+      -d '{"prompt":"Give me the next action.","persona":"sentinel"}'
+
+    curl -sN -X POST http://localhost:8080/api/chat/stream -H "Content-Type: application/json" \
+      -d '{"prompt":"Give me the next action.","persona":"oracle"}'
+
+    # or define one inline, without a file
+    curl -s -X POST http://localhost:8080/api/personas -H "Content-Type: application/json" \
+      -d '{"name":"Reviewer","instructions":"List the three weakest points of the proposal.","tone":"Blunt"}'
+
+    # a body that names no persona falls back to PERSONA_DEFAULT, so the whole service can run
+    # in one voice:  PERSONA_DEFAULT=sentinel java -jar target/tactical-core-0.1.0.jar
+
+Importing the same file twice updates the entries in place, so re-running the import is safe.
+The chat response names the persona it used, and the done frame of a stream carries it too.
+GET /api/health reports how many personas are loaded, so a caller can tell an empty registry
+from an unknown id before sending a chat.
+
 ## Troubleshooting
 
+- "Unknown persona 'x'": nothing was imported in this run, or the id is wrong |
+  POST /api/personas/import, then check the ids with GET /api/personas
 - "No core in scope has a vector field": the core was ingested with embed false, or its
   mapping predates embeddings. POST /api/cores/{name}/mapping adds the field, then re-ingest.
 - "Query vector is 768d but the cores store 384d": the embedding model changed. Delete the

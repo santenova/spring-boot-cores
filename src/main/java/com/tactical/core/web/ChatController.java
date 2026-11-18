@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tactical.core.api.ApiException;
 import com.tactical.core.api.Dtos.ChatRequest;
 import com.tactical.core.api.Dtos.Message;
+import com.tactical.core.api.Dtos.Persona;
 import com.tactical.core.config.TacticalProperties;
 import com.tactical.core.service.OllamaClient;
+import com.tactical.core.service.PersonaService;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
@@ -29,22 +31,27 @@ public class ChatController {
     private final OllamaClient ollama;
     private final TacticalProperties props;
     private final ObjectMapper mapper;
+    private final PersonaService personas;
 
-    /** Wires the model client, the configured default model and the JSON mapper. */
-    public ChatController(OllamaClient ollama, TacticalProperties props, ObjectMapper mapper) {
+    /** Wires the model client, the default model, the JSON mapper and the persona registry. */
+    public ChatController(OllamaClient ollama, TacticalProperties props, ObjectMapper mapper,
+                          PersonaService personas) {
         this.ollama = ollama;
         this.props = props;
         this.mapper = mapper;
+        this.personas = personas;
     }
 
     @PostMapping
-    /** One complete answer, with the model used and the elapsed time. */
+    /** One complete answer, with the model used, the persona that framed it and the elapsed time. */
     public Map<String, Object> chat(@RequestBody ChatRequest request) {
+        Persona persona = persona(request);
         String model = model(request);
         long started = System.currentTimeMillis();
-        String answer = ollama.chat(messages(request), model, false);
+        String answer = ollama.chat(messages(request, persona), model, false);
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("model", model);
+        response.put("persona", persona == null ? null : persona.id());
         response.put("answer", answer);
         response.put("timeMs", System.currentTimeMillis() - started);
         return response;
@@ -56,8 +63,9 @@ public class ChatController {
      */
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<StreamingResponseBody> stream(@RequestBody ChatRequest request) {
+        Persona persona = persona(request);
         String model = model(request);
-        List<Map<String, String>> messages = messages(request);
+        List<Map<String, String>> messages = messages(request, persona);
         StreamingResponseBody body = outputStream -> {
             PrintWriter writer = new PrintWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
             try {
@@ -65,7 +73,13 @@ public class ChatController {
                     writer.print(frame(Map.of("delta", delta)));
                     writer.flush();
                 });
-                writer.print(frame(Map.of("done", true, "tokens", stream.tokens())));
+                Map<String, Object> done = new LinkedHashMap<>();
+                done.put("done", true);
+                done.put("tokens", stream.tokens());
+                if (persona != null) {
+                    done.put("persona", persona.id());
+                }
+                writer.print(frame(done));
                 writer.flush();
             } catch (RuntimeException error) {
                 writer.print(frame(Map.of("error", String.valueOf(error.getMessage()))));
@@ -93,8 +107,20 @@ public class ChatController {
         return model == null || model.isBlank() ? props.ollama().chatModel() : model;
     }
 
+    /**
+     * The persona this turn runs as: the one the body named, otherwise the configured default
+     * when one is imported, otherwise none. A named persona that was never imported is refused
+     * outright rather than silently answered in the default voice.
+     */
+    private Persona persona(ChatRequest request) {
+        if (request.persona() != null && !request.persona().isBlank()) {
+            return personas.require(request.persona());
+        }
+        return personas.defaultPersona();
+    }
+
     /** Normalises prompt-or-messages into the OpenAI message list, refusing an empty turn. */
-    private List<Map<String, String>> messages(ChatRequest request) {
+    private List<Map<String, String>> messages(ChatRequest request, Persona persona) {
         List<Map<String, String>> messages = new ArrayList<>();
         if (request.messages() != null) {
             for (Message message : request.messages()) {
@@ -115,6 +141,13 @@ public class ChatController {
         }
         if (messages.isEmpty()) {
             throw new ApiException(400, "Send a prompt or a messages array");
+        }
+        // The persona directive leads the list, so it frames every turn that follows it
+        if (persona != null) {
+            Map<String, String> directive = new LinkedHashMap<>();
+            directive.put("role", "system");
+            directive.put("content", persona.systemPrompt());
+            messages.add(0, directive);
         }
         return messages;
     }

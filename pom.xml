@@ -49,6 +49,19 @@
   </dependencies>
 
   <build>
+    <!-- sample-data sits at the project root, next to the pom, so it has to be declared as a
+         resource directory: only then does it land in the jar and resolve as
+         classpath:sample-data/personas.json. src/main/resources is listed as well, because
+         declaring any resource overrides the default. -->
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+      <resource>
+        <directory>sample-data</directory>
+        <targetPath>sample-data</targetPath>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.springframework.boot</groupId>

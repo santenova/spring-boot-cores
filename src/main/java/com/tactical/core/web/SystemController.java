@@ -3,6 +3,7 @@ package com.tactical.core.web;
 import com.tactical.core.service.EsClient;
 import com.tactical.core.service.IndexService;
 import com.tactical.core.service.OllamaClient;
+import com.tactical.core.service.PersonaService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,12 +18,14 @@ public class SystemController {
     private final OllamaClient ollama;
     private final EsClient es;
     private final IndexService index;
+    private final PersonaService personas;
 
-    /** Wires both hosts and the core metadata for the health probe. */
-    public SystemController(OllamaClient ollama, EsClient es, IndexService index) {
+    /** Wires both hosts, the core metadata and the persona registry for the health probe. */
+    public SystemController(OllamaClient ollama, EsClient es, IndexService index, PersonaService personas) {
         this.ollama = ollama;
         this.es = es;
         this.index = index;
+        this.personas = personas;
     }
 
     @GetMapping("/models")
@@ -35,6 +38,8 @@ public class SystemController {
     @GetMapping("/health")
     public Map<String, Object> health() {
         Map<String, Object> body = new LinkedHashMap<>();
+        // Personas need neither host, so they are reported before either probe runs
+        body.put("personas", personas.list().size());
         try {
             body.put("ollama", true);
             body.put("models", ollama.listModels().size());

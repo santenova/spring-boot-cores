@@ -9,7 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * fast at startup instead of quietly defaulting to zero.
  */
 @ConfigurationProperties(prefix = "tactical")
-public record TacticalProperties(Ollama ollama, Elastic elastic, Search search, Rag rag) {
+public record TacticalProperties(Ollama ollama, Elastic elastic, Search search, Rag rag, Personas personas) {
 
     public record Ollama(String baseUrl, String apiKey, String chatModel, String embeddingModel,
                          Duration connectTimeout, Duration readTimeout) {
@@ -25,5 +25,9 @@ public record TacticalProperties(Ollama ollama, Elastic elastic, Search search, 
     }
 
     public record Rag(int sourceLimit, int maxCharsPerSource, int maxSentences) {
+    }
+
+    /** sampleFile is a classpath: or filesystem path; defaultPersona may be empty. */
+    public record Personas(String sampleFile, boolean autoImport, String defaultPersona) {
     }
 }

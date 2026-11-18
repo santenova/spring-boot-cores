@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# End-to-end verification of a running tactical-core: installation, chat, ingest, the three
-# search modes, tag navigation and RAG synthesis.
+# End-to-end verification of a running tactical-core: installation, persona import, chat with
+# and without a persona, ingest, the three search modes, tag navigation and RAG synthesis.
 #
 #   scripts/verify.sh                                  # http://localhost:8080, core "verify"
 #   scripts/verify.sh http://host:8080 mycore
@@ -57,8 +57,14 @@ say "1  Installation - the service and both dependencies"
 get health /api/health
 get models /api/models
 
-say "2  Chat - one complete answer, then a streamed one"
+say "2  Personas - import the shipped sample, then read the registry"
+post personas-import /api/personas/import '{"path":"classpath:sample-data/personas.json"}'
+get personas /api/personas
+get persona /api/personas/sentinel
+
+say "3  Chat - one complete answer, then a streamed one, each with and without a persona"
 post chat /api/chat '{"prompt":"Reply with the single word: ready"}'
+post chat-persona /api/chat '{"prompt":"Reply with the single word: ready","persona":"sentinel"}'
 code=$(curl -sS -N -o "$TMP/stream.out" -w '%{http_code}' -X POST "$BASE/api/chat/stream" \
   -H 'Content-Type: application/json' -d '{"prompt":"Say hello in one short sentence."}')
 check stream "$code" "/api/chat/stream"
@@ -69,16 +75,26 @@ else
   fail=$((fail + 1))
   printf '  FAIL  %-16s no done frame in the stream\n' "stream frames"
 fi
+code=$(curl -sS -N -o "$TMP/stream-persona.out" -w '%{http_code}' -X POST "$BASE/api/chat/stream" \
+  -H 'Content-Type: application/json' -d '{"prompt":"Say hello in one short sentence.","persona":"oracle"}')
+check stream-persona "$code" "/api/chat/stream with persona oracle"
+if grep -q '"persona":"oracle"' "$TMP/stream-persona.out" 2>/dev/null; then
+  pass=$((pass + 1))
+  printf '  PASS  %-16s the done frame names the persona\n' "stream persona"
+else
+  fail=$((fail + 1))
+  printf '  FAIL  %-16s the done frame did not name the persona\n' "stream persona"
+fi
 
-say "3  Cores - the list the UI shows"
+say "4  Cores - the list the UI shows"
 get cores /api/cores
 
-say "4  Ingest - expand, wide net, tag, embed, bulk index"
+say "5  Ingest - expand, wide net, tag, embed, bulk index"
 post ingest /api/ingest "{\"queries\":[\"$QUERY\"],\"coreName\":\"$CORE\",\"embed\":true}"
 get mapping "/api/cores/$CORE/mapping"
 post mapping-repair "/api/cores/$CORE/mapping" '{}'
 
-say "5  Search - BM25, kNN, hybrid, tag scoped, tag counts"
+say "6  Search - BM25, kNN, hybrid, tag scoped, tag counts"
 post search-text /api/search "{\"query\":\"$QUERY\",\"mode\":\"text\",\"k\":5}"
 post search-knn /api/search "{\"query\":\"$QUERY\",\"mode\":\"knn\",\"k\":5}"
 post search-hybrid /api/search "{\"query\":\"$QUERY\",\"mode\":\"hybrid\",\"k\":5}"
@@ -96,7 +112,7 @@ hits_body() { # hits_body <search.json> <query> <out.json>
   fi
 }
 
-say "6  RAG - the hybrid hits resolved to their originals"
+say "7  RAG - the hybrid hits resolved to their originals"
 if hits_body "$TMP/search-hybrid.out" "$QUERY" "$TMP/rag.json"; then
   post_file rag /api/rag/synthesize "$TMP/rag.json"
 else
@@ -105,7 +121,7 @@ else
   printf '          {"query":"%s","hits":[...]} where the array is from /api/search\n' "$QUERY"
 fi
 
-say "7  Cleanup - not run, it would drop the documents"
+say "8  Cleanup - not run, it would drop the documents"
 printf '  curl -X DELETE %s/api/cores/%s\n' "$BASE" "$CORE_INDEX"
 
 say "Result"

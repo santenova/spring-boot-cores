@@ -12,7 +12,7 @@ public final class Dtos {
     public record Message(String role, String content) {
     }
 
-    public record ChatRequest(String prompt, List<Message> messages, String model) {
+    public record ChatRequest(String prompt, List<Message> messages, String model, String persona) {
     }
 
     public record SearchRequest(String query, String mode, Integer k, List<String> cores, List<String> tags) {
@@ -50,5 +50,13 @@ public final class Dtos {
     }
 
     public record IngestResult(String index, List<String> log, int indexed, int failed, int vectors) {
+    }
+
+    public record Persona(String id, String name, String description, String instructions, String tone,
+                          String category, String icon, List<String> expertiseAreas, List<String> tags,
+                          String systemPrompt, String source) {
+    }
+
+    public record PersonaImportResult(String source, int total, int created, int skipped, List<String> log) {
     }
 }

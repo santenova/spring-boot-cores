@@ -33,6 +33,14 @@ tactical:
         username: ${ES_USERNAME_2:}
         password: ${ES_PASSWORD_2:}
 
+  personas:
+    # Imported at startup, so a persona can be named in a chat body straight away. The shipped
+    # sample lives at the project root and the pom adds that directory to the classpath.
+    sample-file: ${PERSONA_SAMPLE_FILE:classpath:sample-data/personas.json}
+    auto-import: ${PERSONA_AUTO_IMPORT:true}
+    # Fallback for a chat body that names no persona. Empty means every turn is plain.
+    default-persona: ${PERSONA_DEFAULT:}
+
   search:
     default-top-k: 10
     max-top-k: 100
