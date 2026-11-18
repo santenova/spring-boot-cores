@@ -49,7 +49,7 @@ tactical:
     num-candidates-factor: 15
 
   rag:
-    source-limit: 8
+    source-limit: 50
     max-chars-per-source: 2500
     max-sentences: 6
 

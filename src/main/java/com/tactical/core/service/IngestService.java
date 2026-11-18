@@ -100,7 +100,18 @@ public class IngestService {
             log.add("[" + query + "] " + found.size() + " matched, " + added + " new");
         }
 
-        List<Doc> docs = new ArrayList<>(collected.values());
+        // A document carrying only the query tag has no topic of its own, so it is skipped
+        // rather than indexed as a one-tag record
+        List<Doc> docs = new ArrayList<>();
+        for (Doc doc : collected.values()) {
+            if (doc.tags.size() > 1) {
+                docs.add(doc);
+            }
+        }
+        int oneTag = collected.size() - docs.size();
+        if (oneTag > 0) {
+            log.add("Skipped " + oneTag + " documents carrying only the query tag");
+        }
         int vectors = 0;
         if (withVectors) {
             for (Doc doc : docs) {

@@ -253,7 +253,16 @@ from an unknown id before sending a chat.
 
 ## Works for me :)
 ```
-killall -9 java; mvn -q clean package;   mvn spring-boot:run & sleep 2 ;  bash scripts/verify.sh &  bash scripts/test.sh &
+killall -9 java;
+mvn -q clean package;
+mvn spring-boot:run &
+sleep 5 ;
+
+bash scripts/import-personas.sh ;
+
+bash scripts/verify.sh &
+
+bash scripts/test.sh
 
 
 ```
