@@ -1,4 +1,4 @@
-# tactical-core
+# spring-boot-cores
 
 Spring Boot port of the Tactical knowledge core: ingest documents out of Elasticsearch into
 vector knowledge cores, search them with BM25, kNN or hybrid RRF, and synthesise cited
