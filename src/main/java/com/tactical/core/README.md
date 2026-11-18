@@ -1,0 +1,3 @@
+# tactical-core
+Spring Boot port of the Tactical knowledge core: ingest documents out of Elasticsearch into vector knowledge cores, search them with BM25, kNN or hybrid RRF, and synthesise cited answers through an OpenAI-compatible Ollama endpoint.
+Two local services are all it needs: Ollama (OpenAI-compatible API on port 11434) and Elasticsearch (REST on port 9200). No cloud account, no vendor SDK.

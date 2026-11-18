@@ -1,0 +1,50 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: tactical-core
+  mvc:
+    # A model stream can run for minutes; the servlet async timeout must not cut it
+    async:
+      request-timeout: 10m
+
+tactical:
+  ollama:
+    # Ollama's OpenAI-compatible surface. Any OpenAI-style host works by changing this URL.
+    base-url: ${OLLAMA_BASE_URL:http://localhost:11434/v1}
+    api-key: ${OLLAMA_API_KEY:ollama}
+    chat-model: ${OLLAMA_CHAT_MODEL:llama3:latest}
+    embedding-model: ${OLLAMA_EMBED_MODEL:nomic-embed-text}
+    connect-timeout: 5s
+    read-timeout: 180s
+
+  elastic:
+    # Which endpoint below is used. Label match is case-insensitive, first entry is the fallback.
+    active: ${ES_ACTIVE:local}
+    index-prefix: ${ES_INDEX_PREFIX:knowledge_core_}
+    endpoints:
+      - label: local
+        url: ${ES_URL:http://localhost:9200}
+        username: ${ES_USERNAME:}
+        password: ${ES_PASSWORD:}
+      - label: local-alt
+        url: ${ES_URL_2:http://localhost:9201}
+        username: ${ES_USERNAME_2:}
+        password: ${ES_PASSWORD_2:}
+
+  search:
+    default-top-k: 10
+    max-top-k: 100
+    wide-net-limit: 10000
+    rrf-k: 60
+    num-candidates-factor: 15
+
+  rag:
+    source-limit: 8
+    max-chars-per-source: 2500
+    max-sentences: 6
+
+logging:
+  level:
+    com.tactical.core: INFO
