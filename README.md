@@ -201,3 +201,52 @@ from an unknown id before sending a chat.
   ES_USERNAME / ES_PASSWORD are empty.
 - "Text fields are not optimised for aggregations": the tags aggregation retries on
   tags.keyword automatically; a core built by an old version may need a reindex.
+
+
+## How it should work
+
+
+```
+ bash scripts/verify.sh 
+
+== 1  Installation - the service and both dependencies ==
+  PASS  health           /api/health
+  PASS  models           /api/models
+
+== 2  Personas - import the shipped sample, then read the registry ==
+  PASS  personas-import  /api/personas/import
+  PASS  personas         /api/personas
+  PASS  persona          /api/personas/sentinel
+
+== 3  Chat - one complete answer, then a streamed one, each with and without a persona ==
+  PASS  chat             /api/chat
+  PASS  chat-persona     /api/chat
+  PASS  stream           /api/chat/stream
+  PASS  stream frames    done frame received
+  PASS  stream-persona   /api/chat/stream with persona oracle
+  PASS  stream persona   the done frame names the persona
+
+== 4  Cores - the list the UI shows ==
+  PASS  cores            /api/cores
+
+== 5  Ingest - expand, wide net, tag, embed, bulk index ==
+  PASS  ingest           /api/ingest
+  PASS  mapping          /api/cores/verify/mapping
+  PASS  mapping-repair   /api/cores/verify/mapping
+
+== 6  Search - BM25, kNN, hybrid, tag scoped, tag counts ==
+  PASS  search-text      /api/search
+  PASS  search-knn       /api/search
+  PASS  search-hybrid    /api/search
+  PASS  search-tag       /api/search
+  PASS  tags             /api/search/tags
+
+== 7  RAG - the hybrid hits resolved to their originals ==
+  PASS  rag              /api/rag/synthesize
+
+== 8  Cleanup - not run, it would drop the documents ==
+  curl -X DELETE http://localhost:8080/api/cores/knowledge_core_verify
+
+== Result ==
+  21 passed, 0 failed
+```
