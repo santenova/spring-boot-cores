@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end verification of a running tactical-core: installation, persona import, chat with
-# and without a persona, ingest, the three search modes, tag navigation and RAG synthesis.
+# and without a persona, ingest, the three search modes, tag navigation, RAG synthesis, then
+# the background ingest job, the overview report, one RAG chat turn and a core export.
 #
 #   scripts/verify.sh                                  # http://localhost:8080, core "verify"
 #   scripts/verify.sh http://host:8080 mycore
@@ -121,7 +122,15 @@ else
   printf '          {"query":"%s","hits":[...]} where the array is from /api/search\n' "$QUERY"
 fi
 
-say "8  Cleanup - not run, it would drop the documents"
+say "8  Automation, export and reporting"
+post job /api/ingest/jobs "{\"queries\":[\"$QUERY\"],\"coreName\":\"$CORE\",\"embed\":true}"
+get jobs /api/ingest/jobs
+get report /api/reports/overview
+post rag-chat /api/rag/chat "{\"query\":\"$QUERY\",\"mode\":\"hybrid\",\"k\":5,\"cores\":[\"$CORE_INDEX\"]}"
+code=$(curl -sS -o "$TMP/export.out" -w '%{http_code}' "$BASE/api/export/cores/$CORE?limit=5")
+check export "$code" "/api/export/cores/$CORE?limit=5"
+
+say "9  Cleanup - not run, it would drop the documents"
 printf '  curl -X DELETE %s/api/cores/%s\n' "$BASE" "$CORE_INDEX"
 
 say "Result"

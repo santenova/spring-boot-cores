@@ -9,7 +9,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * fast at startup instead of quietly defaulting to zero.
  */
 @ConfigurationProperties(prefix = "tactical")
-public record TacticalProperties(Ollama ollama, Elastic elastic, Search search, Rag rag, Personas personas) {
+public record TacticalProperties(Ollama ollama, Elastic elastic, Search search, Rag rag, Personas personas,
+                                 Ingest ingest) {
 
     public record Ollama(String baseUrl, String apiKey, String chatModel, String embeddingModel,
                          Duration connectTimeout, Duration readTimeout) {
@@ -29,5 +30,12 @@ public record TacticalProperties(Ollama ollama, Elastic elastic, Search search, 
 
     /** sampleFile is a classpath: or filesystem path; defaultPersona may be empty. */
     public record Personas(String sampleFile, boolean autoImport, String defaultPersona) {
+    }
+
+    /** auto carries the scheduled re-ingestion switch, its target core and its topics. */
+    public record Ingest(Auto auto) {
+
+        public record Auto(boolean enabled, String coreName, boolean embed, List<String> queries) {
+        }
     }
 }

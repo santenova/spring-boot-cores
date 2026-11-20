@@ -101,15 +101,16 @@ public class IngestService {
         }
 
         // A document carrying only the query tag has no topic of its own, so it is skipped
-        // rather than indexed as a one-tag record
+        // rather than indexed as a one-tag record - unless the caller switched the skip off
+        boolean skipOneTag = request.skipSingleTag() == null || request.skipSingleTag();
         List<Doc> docs = new ArrayList<>();
         for (Doc doc : collected.values()) {
-            if (doc.tags.size() > 1) {
+            if (!skipOneTag || doc.tags.size() > 1) {
                 docs.add(doc);
             }
         }
         int oneTag = collected.size() - docs.size();
-        if (oneTag > 0) {
+        if (skipOneTag && oneTag > 0) {
             log.add("Skipped " + oneTag + " documents carrying only the query tag");
         }
         int vectors = 0;

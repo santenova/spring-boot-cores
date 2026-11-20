@@ -46,7 +46,7 @@ public final class Dtos {
     }
 
     public record IngestRequest(List<String> queries, String coreName, Boolean expandQueries, Boolean embed,
-                                Integer resultLimit) {
+                                Integer resultLimit, Boolean skipSingleTag) {
     }
 
     public record IngestResult(String index, List<String> log, int indexed, int failed, int vectors) {
@@ -58,5 +58,20 @@ public final class Dtos {
     }
 
     public record PersonaImportResult(String source, int total, int created, int skipped, List<String> log) {
+    }
+
+    public record RagChatRequest(String query, String mode, Integer k, List<String> cores, String persona,
+                                 String model, Integer limit) {
+    }
+
+    public record RagChatResult(String query, String mode, String answer, List<RagSource> sources,
+                                List<SearchHit> hits, String persona, String model, String note,
+                                long tookMs) {
+    }
+
+    /** One background ingest: its state, the counts it reached and the log lines so far. */
+    public record IngestJob(String id, String status, String coreName, List<String> queries, boolean embed,
+                            String submittedAt, String startedAt, String finishedAt, int indexed, int failed,
+                            int vectors, String error, List<String> log) {
     }
 }

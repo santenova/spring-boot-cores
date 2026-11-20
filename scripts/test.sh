@@ -93,5 +93,19 @@ else
   printf '  SKIP - no jq or python3 to lift the hits array out of the search response\n'
 fi
 
-say "8  Cleanup - not run, it would drop the documents"
+say "8  Automation, export and reporting"
+printf '\nPOST /api/ingest/jobs\n'
+curl -sS -X POST "$BASE/api/ingest/jobs" -H 'Content-Type: application/json' \
+  -d "{\"queries\":[\"$QUERY\"],\"coreName\":\"$CORE\",\"embed\":true}" | pretty
+printf '\nGET /api/ingest/jobs\n'
+curl -sS "$BASE/api/ingest/jobs" | pretty
+printf '\nGET /api/reports/overview\n'
+curl -sS "$BASE/api/reports/overview" | pretty
+printf '\nPOST /api/rag/chat\n'
+curl -sS -X POST "$BASE/api/rag/chat" -H 'Content-Type: application/json' \
+  -d "{\"query\":\"$QUERY\",\"mode\":\"hybrid\",\"k\":5,\"cores\":[\"$CORE_INDEX\"]}" | pretty
+printf '\nGET /api/export/cores/%s?limit=5\n' "$CORE"
+curl -sS "$BASE/api/export/cores/$CORE?limit=5" | head -5
+
+say "9  Cleanup - not run, it would drop the documents"
 printf '  curl -X DELETE %s/api/cores/%s\n' "$BASE" "$CORE_INDEX"

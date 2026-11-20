@@ -69,7 +69,14 @@ One script runs every pipeline below in order and prints PASS or FAIL with the H
 
     scripts/verify.sh                                  # http://localhost:8080, core "verify"
     scripts/verify.sh http://host:8080 mycore
-    VERIFY_QUERY="ransomware" scripts/verify.sh
+    VERIFY_QUERY="ocean" scripts/verify.sh
+
+scripts/test.sh is the same pipeline as plain curl calls: it counts nothing and prints every
+response as it arrives, so one step can be read on its own or piped into jq:
+
+    scripts/test.sh                                    # http://localhost:8080, core "verify"
+    scripts/test.sh http://host:8080 mycore
+    TEST_QUERY="ocean" scripts/test.sh
 
 The same pipelines by hand, in the order they should pass:
 
@@ -97,7 +104,7 @@ The same pipelines by hand, in the order they should pass:
 
     # 5  ingest a core: expand, wide net, tag, embed, bulk index
     curl -s -X POST http://localhost:8080/api/ingest -H "Content-Type: application/json" \
-      -d '{"queries":["malware analysis"],"coreName":"verify","embed":true}'
+      -d '{"queries":["ocean"],"coreName":"verify","embed":true}'
 
     # 6  the core exists, and its vector field is readable
     curl -s http://localhost:8080/api/cores/verify/mapping
@@ -106,21 +113,21 @@ The same pipelines by hand, in the order they should pass:
 
     # 7  BM25, kNN and hybrid - one body, three modes
     curl -s -X POST http://localhost:8080/api/search -H "Content-Type: application/json" \
-      -d '{"query":"ransomware behaviour","mode":"text","k":5}'
+      -d '{"query":"ocean","mode":"text","k":5}'
     curl -s -X POST http://localhost:8080/api/search -H "Content-Type: application/json" \
-      -d '{"query":"ransomware behaviour","mode":"knn","k":5}'
+      -d '{"query":"ocean","mode":"knn","k":5}'
     curl -s -X POST http://localhost:8080/api/search -H "Content-Type: application/json" \
-      -d '{"query":"ransomware behaviour","mode":"hybrid","k":5}'
+      -d '{"query":"ocean","mode":"hybrid","k":5}'
 
     # 8  tag scoped kNN, then the tag counts behind the navigation
     curl -s -X POST http://localhost:8080/api/search -H "Content-Type: application/json" \
-      -d '{"tags":["malware analysis"],"cores":["knowledge_core_verify"]}'
+      -d '{"tags":["ocean"],"cores":["knowledge_core_verify"]}'
     curl -s -X POST http://localhost:8080/api/search/tags -H "Content-Type: application/json" \
       -d '{"cores":["knowledge_core_verify"]}'
 
     # 9  RAG - paste the hits array of the hybrid response into the body
     curl -s -X POST http://localhost:8080/api/rag/synthesize -H "Content-Type: application/json" \
-      -d '{"query":"ransomware behaviour","hits":[]}'
+      -d '{"query":"ocean","hits":[]}'
 
     # 10 drop the test core
     curl -s -X DELETE http://localhost:8080/api/cores/knowledge_core_verify
@@ -148,6 +155,43 @@ either a delta or a final done event carrying the token count.
     DELETE /api/cores/{name}
     POST   /api/ingest
     POST   /api/rag/synthesize
+    POST   /api/rag/chat
+    POST   /api/ingest/jobs
+    GET    /api/ingest/jobs
+    GET    /api/ingest/jobs/{id}
+    DELETE /api/ingest/jobs/{id}
+    GET    /api/export/cores/{name}?format=ndjson|csv
+    GET    /api/reports/overview
+
+## Automation, export and reporting
+
+Ingestion can run as a background job, so a long core never holds a request open. The submit
+answers 202 with a job id, and the job reports queued, running, then done or failed with the
+counts and the log lines it produced.
+
+    curl -s -X POST http://localhost:8080/api/ingest/jobs -H "Content-Type: application/json" \
+      -d '{"queries":["ocean"],"coreName":"verify","embed":true}'
+    curl -s http://localhost:8080/api/ingest/jobs
+    curl -s http://localhost:8080/api/ingest/jobs/{id}
+    curl -s -X DELETE http://localhost:8080/api/ingest/jobs/{id}
+
+The same job path runs on a timer. Switch it on with INGEST_AUTO_ENABLED=true, name the core
+with INGEST_AUTO_CORE, list its topics under tactical.ingest.auto.queries in application.yml,
+and every tactical.ingest.auto.delay-ms milliseconds a job is queued.
+
+One call can also carry the whole RAG turn - search, resolve the originals, answer with
+citations - and the installation reports itself in one response:
+
+    curl -s -X POST http://localhost:8080/api/rag/chat -H "Content-Type: application/json" \
+      -d '{"query":"ocean","mode":"hybrid","k":5,"persona":"sentinel"}'
+
+    curl -s http://localhost:8080/api/reports/overview
+
+A core exports as NDJSON (every field, the vector left out) or CSV (the columns a spreadsheet
+reads), limited by ?limit= and capped at 10000 documents:
+
+    curl -s "http://localhost:8080/api/export/cores/verify?format=ndjson&limit=100" > core.ndjson
+    curl -s "http://localhost:8080/api/export/cores/verify?format=csv&limit=100" > core.csv
 
 ## Personas
 
@@ -184,6 +228,12 @@ in memory, so the startup import is what fills it after every restart:
     # a body that names no persona falls back to PERSONA_DEFAULT, so the whole service can run
     # in one voice:  PERSONA_DEFAULT=sentinel java -jar target/tactical-core-0.1.0.jar
 
+The same import is one command, and it prints the registry so the ids are visible:
+
+    scripts/import-personas.sh                                 # the shipped sample
+    scripts/import-personas.sh ~/personas.json                 # your own export
+    scripts/import-personas.sh ~/personas.json http://host:8080
+
 Importing the same file twice updates the entries in place, so re-running the import is safe.
 The chat response names the persona it used, and the done frame of a stream carries it too.
 GET /api/health reports how many personas are loaded, so a caller can tell an empty registry
@@ -202,67 +252,18 @@ from an unknown id before sending a chat.
 - "Text fields are not optimised for aggregations": the tags aggregation retries on
   tags.keyword automatically; a core built by an old version may need a reindex.
 
-
-## How it should work
-
-
-```
- bash scripts/verify.sh 
-
-== 1  Installation - the service and both dependencies ==
-  PASS  health           /api/health
-  PASS  models           /api/models
-
-== 2  Personas - import the shipped sample, then read the registry ==
-  PASS  personas-import  /api/personas/import
-  PASS  personas         /api/personas
-  PASS  persona          /api/personas/sentinel
-
-== 3  Chat - one complete answer, then a streamed one, each with and without a persona ==
-  PASS  chat             /api/chat
-  PASS  chat-persona     /api/chat
-  PASS  stream           /api/chat/stream
-  PASS  stream frames    done frame received
-  PASS  stream-persona   /api/chat/stream with persona oracle
-  PASS  stream persona   the done frame names the persona
-
-== 4  Cores - the list the UI shows ==
-  PASS  cores            /api/cores
-
-== 5  Ingest - expand, wide net, tag, embed, bulk index ==
-  PASS  ingest           /api/ingest
-  PASS  mapping          /api/cores/verify/mapping
-  PASS  mapping-repair   /api/cores/verify/mapping
-
-== 6  Search - BM25, kNN, hybrid, tag scoped, tag counts ==
-  PASS  search-text      /api/search
-  PASS  search-knn       /api/search
-  PASS  search-hybrid    /api/search
-  PASS  search-tag       /api/search
-  PASS  tags             /api/search/tags
-
-== 7  RAG - the hybrid hits resolved to their originals ==
-  PASS  rag              /api/rag/synthesize
-
-== 8  Cleanup - not run, it would drop the documents ==
-  curl -X DELETE http://localhost:8080/api/cores/knowledge_core_verify
-
-== Result ==
-  21 passed, 0 failed
-```
-
 ## Works for me :)
-```
-killall -9 java;
-mvn -q clean package;
-mvn spring-boot:run &
-sleep 5 ;
 
-bash scripts/import-personas.sh ;
+One sequence from a cold machine: free the port, build, start the server in the background,
+import the personas, then verify and test against it.
 
-bash scripts/verify.sh &
+    killall -9 java;
+    mvn -q clean package;
+    mvn spring-boot:run &
+    sleep 5 ;
 
-bash scripts/test.sh
+    bash scripts/import-personas.sh ;
 
+    bash scripts/verify.sh &
 
-```
+    bash scripts/test.sh

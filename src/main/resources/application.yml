@@ -41,6 +41,17 @@ tactical:
     # Fallback for a chat body that names no persona. Empty means every turn is plain.
     default-persona: ${PERSONA_DEFAULT:}
 
+  ingest:
+    auto:
+      # Re-ingestion on a timer. Off by default: the service ingests when it is asked to.
+      enabled: ${INGEST_AUTO_ENABLED:false}
+      delay-ms: ${INGEST_AUTO_DELAY_MS:900000}
+      initial-delay-ms: ${INGEST_AUTO_INITIAL_DELAY_MS:60000}
+      core-name: ${INGEST_AUTO_CORE:scheduled}
+      embed: ${INGEST_AUTO_EMBED:true}
+      # One entry per topic; add as many as the scheduled core should cover
+      queries: []
+
   search:
     default-top-k: 10
     max-top-k: 100

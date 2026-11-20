@@ -43,6 +43,14 @@ public class RagService {
 
     /** Resolves the top hits to their originals, asks the model, returns answer plus sources. */
     public RagResult synthesize(RagRequest request) {
+        return synthesize(request, null, null);
+    }
+
+    /**
+     * The same synthesis with an optional persona directive at the head of the message list and
+     * an optional model override, so a RAG chat turn can be framed and answered by any model.
+     */
+    public RagResult synthesize(RagRequest request, String directive, String model) {
         String query = request.query() == null ? "" : request.query().trim();
         if (query.isEmpty()) {
             throw new ApiException(400, "A query is required");
@@ -88,8 +96,13 @@ public class RagService {
                 + "If the sources do not contain the answer, reply exactly: \"The indexed sources do not cover this.\"\n"
                 + "Be concise (maximum " + props.rag().maxSentences() + " sentences).\n\n"
                 + "QUESTION: " + query + "\n\nSOURCES:\n" + context;
-        String answer = ollama.chat(List.of(Map.of("role", "user", "content", prompt)),
-                props.ollama().chatModel(), false);
+        List<Map<String, String>> messages = new ArrayList<>();
+        if (directive != null && !directive.isBlank()) {
+            messages.add(Map.of("role", "system", "content", directive));
+        }
+        messages.add(Map.of("role", "user", "content", prompt));
+        String answer = ollama.chat(messages,
+                model == null || model.isBlank() ? props.ollama().chatModel() : model, false);
         String note = "SYNTHESIS CONTEXT: " + full + " OF " + sources.size()
                 + " SOURCES READ AS FULL ORIGINAL DOCUMENTS"
                 + (full < sources.size() ? " - THE REST HAVE ONLY THEIR SNIPPET" : "")
